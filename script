@@ -225,7 +225,7 @@ local function setInfJump(state)
             end
         end)
     else
-        infJumpButton.Text = "DESLIGADO"
+        infJumpButton.Text = "GAY"
         infJumpButton.BackgroundColor3 = Color3.fromRGB(120, 30, 30)
     end
 end
