@@ -1,11 +1,14 @@
+local OrionLib = loadstring(game:HttpGet(("https://raw.githubusercontent.com/shlexware/Orion/main/source")))()
+
+-- Configurações do grupo
 local GroupID = 16168861
--- Defina aqui os NOMES dos cargos que terão permissão
 local AllowedRanks = {"High Rank Admin", "Low Rank Admin", "Lower Rank Admin"}
 
-local LoopKillPlayers = {}
-local LoopKillConnections = {}
+-- Tabelas para armazenamento de dados
+local playerData = {}
+local commandLogs = {}
 
--- Função para verificar se um jogador tem um cargo permitido pelo NOME
+-- Função para verificar se um jogador tem um cargo permitido
 function PlayerHasRequiredRank(player)
     local success, result = pcall(function()
         local groupInfo = game:GetService("GroupService"):GetGroupInfoAsync(GroupID)
@@ -24,141 +27,194 @@ function PlayerHasRequiredRank(player)
     return success and result
 end
 
--- Função para enviar jogador para o void (adaptada do seu exemplo)
-function SendToVoid(targetPlayer)
-    if not targetPlayer.Character then return end
-    
-    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not targetHRP then return end
-    
-    -- Teleporta o jogador para bem abaixo do mapa (void)
-    targetHRP.CFrame = CFrame.new(targetHRP.Position + Vector3.new(0, -500, 0))
-    
-    -- Força a morte do personagem
-    local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
-    if humanoid then
-        humanoid.Health = 0
-    end
-end
-
--- Função para iniciar o loopkill em um jogador
-function StartLoopKill(targetPlayer)
-    if LoopKillPlayers[targetPlayer.Name] then
-        return  -- Já está ativo
-    end
-
-    -- Executa imediatamente
-    SendToVoid(targetPlayer)
-
-    -- Conecta o evento CharacterAdded para executar sempre que o jogador renascer
-    local connection = targetPlayer.CharacterAdded:Connect(function(character)
-        character:WaitForChild("HumanoidRootPart")
-        wait(1)  -- Espera um pouco para o personagem spawnar completamente
-        SendToVoid(targetPlayer)
-    end)
-
-    LoopKillPlayers[targetPlayer.Name] = true
-    LoopKillConnections[targetPlayer.Name] = connection
-    
-    -- Também executa periodicamente (a cada 3 segundos) para garantir
-    local periodicConnection = game:GetService("RunService").Heartbeat:Connect(function()
-        if LoopKillPlayers[targetPlayer.Name] and targetPlayer.Character then
-            SendToVoid(targetPlayer)
-        else
-            periodicConnection:Disconnect()
+-- Função para obter informações do rank de um jogador
+function GetPlayerRankInfo(player)
+    local success, result = pcall(function()
+        local groupInfo = game:GetService("GroupService"):GetGroupInfoAsync(GroupID)
+        if groupInfo then
+            local userRole = groupInfo.Roles:GetRoleForUser(player.UserId)
+            if userRole then
+                return userRole.Name, userRole.Rank
+            end
         end
+        return "Sem Rank", 0
     end)
-end
-
--- Função para parar o loopkill em um jogador
-function StopLoopKill(targetPlayer)
-    local connection = LoopKillConnections[targetPlayer.Name]
-    if connection then
-        connection:Disconnect()
-        LoopKillConnections[targetPlayer.Name] = nil
+    
+    if success then
+        return result, 0
+    else
+        return "Erro ao carregar", 0
     end
-    LoopKillPlayers[targetPlayer.Name] = nil
 end
 
--- Função para iniciar o loopkill em todos os jogadores
-function StartLoopKillAll()
+-- Função para adicionar log de comando
+function AddCommandLog(player, command)
+    local timestamp = os.date("%H:%M:%S")
+    local logEntry = {
+        Player = player.Name,
+        Command = command,
+        Time = timestamp
+    }
+    
+    table.insert(commandLogs, 1, logEntry)
+    
+    -- Limita o log aos 50 últimos comandos
+    if #commandLogs > 50 then
+        table.remove(commandLogs, 51)
+    end
+    
+    -- Atualiza a interface se estiver aberta
+    if OrionLib:GetWindow("CommandLogs") then
+        UpdateCommandLogsUI()
+    end
+end
+
+-- Criar a janela principal do OrionLib
+local Window = OrionLib:MakeWindow({
+    Name = "Sistema de Administração",
+    HidePremium = false,
+    SaveConfig = false,
+    ConfigFolder = "AdminConfig"
+})
+
+-- Aba para listar jogadores online e seus ranks
+local PlayersTab = Window:MakeTab({
+    Name = "Jogadores Online",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Aba para visualizar logs de comandos
+local LogsTab = Window:MakeTab({
+    Name = "Logs de Comandos",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
+-- Elementos da UI para jogadores
+local playerListLabel = PlayersTab:AddSection({
+    Name = "Jogadores Conectados"
+})
+
+local playerFrames = {}
+local playerSections = {}
+
+-- Elementos da UI para logs
+local logsLabel = LogsTab:AddSection({
+    Name = "Últimos Comandos Executados"
+})
+
+local logsText = LogsTab:AddParagraph("", "")
+
+-- Função para atualizar a lista de jogadores
+function UpdatePlayersUI()
+    for _, section in pairs(playerSections) do
+        section:Remove()
+    end
+    playerSections = {}
+    
     for _, player in ipairs(game.Players:GetPlayers()) do
-        if not PlayerHasRequiredRank(player) then  -- Não aplica a admins
-            StartLoopKill(player)
-        end
+        local rankName, rankNumber = GetPlayerRankInfo(player)
+        local isAdmin = PlayerHasRequiredRank(player)
+        
+        local adminStatus = isAdmin and "✅" or "❌"
+        local playerColor = isAdmin and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
+        
+        local section = PlayersTab:AddSection({
+            Name = player.Name .. " " .. adminStatus,
+            Default = false
+        })
+        
+        section:AddLabel("Rank: " .. rankName .. " (#" .. tostring(rankNumber) .. ")")
+        section:AddLabel("UserID: " .. player.UserId)
+        
+        playerSections[player.Name] = section
+        playerData[player.Name] = {
+            Rank = rankName,
+            RankNumber = rankNumber,
+            IsAdmin = isAdmin
+        }
     end
 end
 
--- Função para parar o loopkill em todos os jogadores
-function StopLoopKillAll()
-    for playerName, _ in pairs(LoopKillPlayers) do
-        local player = game.Players:FindFirstChild(playerName)
-        if player then
-            StopLoopKill(player)
-        end
+-- Função para atualizar os logs de comandos
+function UpdateCommandLogsUI()
+    local logText = ""
+    
+    for i, log in ipairs(commandLogs) do
+        logText = logText .. string.format("[%s] %s: %s\n", log.Time, log.Player, log.Command)
     end
+    
+    logsText:Set(logText)
 end
 
--- Função para parar o loopkill de um jogador específico
-function StopLoopKillPlayer(targetName)
-    local targetPlayer = game.Players:FindFirstChild(targetName)
-    if targetPlayer then
-        StopLoopKill(targetPlayer)
-        return true
-    end
-    return false
-end
-
--- Detecta quando um jogador envia uma mensagem no chat
+-- Monitorar quando jogadores entram e saem
 game.Players.PlayerAdded:Connect(function(player)
+    wait(1) -- Espera um pouco para carregar as informações
+    UpdatePlayersUI()
+    
+    -- Monitorar comandos deste jogador
     player.Chatted:Connect(function(message)
-        if string.sub(message, 1, 9):lower() == ":loopkill" then
-            if PlayerHasRequiredRank(player) then
-                local targetName = string.sub(message, 11)  -- Remove ":loopkill " do início
-                
-                if targetName:lower() == "all" then
-                    StartLoopKillAll()
-                    player:Chat("Loopkill ativado para todos os jogadores.")
-                else
-                    local targetPlayer = game.Players:FindFirstChild(targetName)
-                    if targetPlayer then
-                        StartLoopKill(targetPlayer)
-                        player:Chat("Loopkill ativado para " .. targetPlayer.Name)
-                    else
-                        player:Chat("Jogador não encontrado: " .. targetName)
-                    end
-                end
-            else
-                player:Chat("Você não tem permissão para usar este comando.")
-            end
-        elseif string.sub(message, 1, 11):lower() == ":unloopkill" then
-            if PlayerHasRequiredRank(player) then
-                local targetName = string.sub(message, 13)  -- Remove ":unloopkill " do início
-                
-                if targetName:lower() == "all" then
-                    StopLoopKillAll()
-                    player:Chat("Loopkill desativado para todos.")
-                else
-                    if StopLoopKillPlayer(targetName) then
-                        player:Chat("Loopkill desativado para " .. targetName)
-                    else
-                        player:Chat("Jogador não encontrado ou não estava em loopkill: " .. targetName)
-                    end
-                end
-            else
-                player:Chat("Você não tem permissão para usar este comando.")
-            end
+        if string.sub(message, 1, 1) == ":" then
+            AddCommandLog(player, message)
         end
     end)
 end)
 
--- Limpa as conexões quando um jogador deixa o jogo
 game.Players.PlayerRemoving:Connect(function(player)
-    if LoopKillPlayers[player.Name] then
-        StopLoopKill(player)
-    end
+    wait(1) -- Espera um pouco para atualizar
+    UpdatePlayersUI()
 end)
 
--- Mensagem de inicialização
-print("Sistema de LoopKail carregado para Fling Things and People")
-print("Comandos disponíveis: :loopkill [nome/all], :unloopkill [nome/all]")
+-- Atualizar a interface periodicamente
+local refreshLoop
+refreshLoop = game:GetService("RunService").Heartbeat:Connect(function()
+    UpdatePlayersUI()
+    UpdateCommandLogsUI()
+end)
+
+-- Inicializar a interface
+UpdatePlayersUI()
+UpdateCommandLogsUI()
+
+-- Adicionar botão de atualização manual
+PlayersTab:AddButton({
+    Name = "Atualizar Lista",
+    Callback = function()
+        UpdatePlayersUI()
+        OrionLib:MakeNotification({
+            Name = "Lista atualizada!",
+            Content = "Lista de jogadores foi atualizada.",
+            Image = "rbxassetid://4483345998",
+            Time = 3
+        })
+    end
+})
+
+-- Adicionar botão para limpar logs
+LogsTab:AddButton({
+    Name = "Limpar Logs",
+    Callback = function()
+        commandLogs = {}
+        UpdateCommandLogsUI()
+        OrionLib:MakeNotification({
+            Name = "Logs limpos!",
+            Content = "Todos os logs de comandos foram removidos.",
+            Image = "rbxassetid://4483345998",
+            Time = 3
+        })
+    end
+})
+
+-- Inicializar a OrionLib
+OrionLib:Init()
+
+-- Notificação de inicialização
+OrionLib:MakeNotification({
+    Name = "Sistema carregado!",
+    Content = "Menu de administração inicializado com sucesso.",
+    Image = "rbxassetid://4483345998",
+    Time = 5
+})
+
+print("Sistema de monitoramento OrionLib carregado com sucesso!")
