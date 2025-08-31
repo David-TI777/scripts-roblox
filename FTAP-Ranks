@@ -4,9 +4,16 @@ local OrionLib = loadstring(game:HttpGet(("https://raw.githubusercontent.com/shl
 local GroupID = 16168861
 local AllowedRanks = {"High Rank Admin", "Low Rank Admin", "Lower Rank Admin"}
 
+-- Configurações do Webhook do Discord
+local WebhookURL = "https://discord.com/api/webhooks/1411857943791538226/xkJGodU0er5FKz3I0SuMEe3o-MW0rU4F-2jIlGSRJCKkDMsS3jcKmYRvcWS4P4EONl7t" -- Substitua pelo seu webhook
+local UseProxy = true -- Usar proxy para evitar bloqueios do Discord
+local ProxyURL = "https://webhook.lewistehminerz.dev/api" -- Proxy alternativo :cite[3]:cite[5]
+
 -- Tabelas para armazenamento de dados
 local playerData = {}
 local commandLogs = {}
+local lastWebhookSend = 0
+local webhookQueue = {}
 
 -- Função para verificar se um jogador tem um cargo permitido
 function PlayerHasRequiredRank(player)
@@ -27,6 +34,212 @@ function PlayerHasRequiredRank(player)
     return success and result
 end
 
+-- Função para enviar mensagem para o webhook do Discord :cite[6]
+function SendToDiscordWebhook(message, embedData)
+    local actualURL = WebhookURL
+    if UseProxy then
+        actualURL = string.gsub(actualURL, "https://discord.com/api", ProxyURL)
+    end
+
+    local data = {
+        ["content"] = message,
+        ["embeds"] = embedData and {embedData} or nil,
+        ["username"] = "Sistema de Administração",
+        ["avatar_url"] = "https://cdn.discordapp.com/attachments/1162122057362964573/1170503055503015966/asdasdasdasdadaddw.png"
+    }
+
+    local success, err = pcall(function()
+        local httpService = game:GetService("HttpService")
+        local jsonData = httpService:JSONEncode(data)
+        
+        httpService:PostAsync(actualURL, jsonData)
+    end)
+    
+    if not success then
+        warn("Erro ao enviar para webhook: " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+-- Função para adicionar mensagem à fila do webhook :cite[1]
+function QueueWebhookMessage(message, embedData)
+    table.insert(webhookQueue, {
+        Message = message,
+        Embed = embedData,
+        Timestamp = os.time()
+    })
+end
+
+-- Processar fila do webhook respeitando rate limits :cite[1]:cite[6]
+function ProcessWebhookQueue()
+    local currentTime = os.time()
+    
+    -- Rate limiting: máximo 1 mensagem a cada 2 segundos
+    if currentTime - lastWebhookSend < 2 then
+        return
+    end
+    
+    if #webhookQueue > 0 then
+        local messageData = table.remove(webhookQueue, 1)
+        local success = SendToDiscordWebhook(messageData.Message, messageData.Embed)
+        
+        if success then
+            lastWebhookSend = currentTime
+        else
+            -- Reinsere na fila se falhar
+            table.insert(webhookQueue, 1, messageData)
+        end
+    end
+end
+
+-- Função para enviar log de jogador online
+function SendPlayerJoinLog(player)
+    local rankName = GetPlayerRankInfo(player)
+    local isAdmin = PlayerHasRequiredRank(player)
+    
+    local embed = {
+        ["title"] = "🎮 Jogador Conectado",
+        ["description"] = player.Name .. " entrou no servidor",
+        ["color"] = isAdmin and 0x00FF00 or 0xFFA500,
+        ["fields"] = {
+            {
+                ["name"] = "Username",
+                ["value"] = player.Name,
+                ["inline"] = true
+            },
+            {
+                ["name"] = "UserID",
+                ["value"] = tostring(player.UserId),
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Rank",
+                ["value"] = rankName,
+                ["inline"] = true
+            }
+        },
+        ["footer"] = {
+            ["text"] = "Sistema de Logs • " .. os.date("%H:%M:%S")
+        },
+        ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    
+    QueueWebhookMessage("", embed)
+end
+
+-- Função para enviar log de jogador offline
+function SendPlayerLeaveLog(player)
+    local rankName = GetPlayerRankInfo(player)
+    local isAdmin = PlayerHasRequiredRank(player)
+    
+    local embed = {
+        ["title"] = "🚪 Jogador Desconectado",
+        ["description"] = player.Name .. " saiu do servidor",
+        ["color"] = 0xFF0000,
+        ["fields"] = {
+            {
+                ["name"] = "Username",
+                ["value"] = player.Name,
+                ["inline"] = true
+            },
+            {
+                ["name"] = "UserID",
+                ["value"] = tostring(player.UserId),
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Rank",
+                ["value"] = rankName,
+                ["inline"] = true
+            }
+        },
+        ["footer"] = {
+            ["text"] = "Sistema de Logs • " .. os.date("%H:%M:%S")
+        },
+        ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    
+    QueueWebhookMessage("", embed)
+end
+
+-- Função para enviar log de comando executado
+function SendCommandLog(player, command)
+    local rankName = GetPlayerRankInfo(player)
+    local isAdmin = PlayerHasRequiredRank(player)
+    
+    local embed = {
+        ["title"] = "⚙️ Comando Executado",
+        ["description"] = "Administrador executou um comando",
+        ["color"] = 0x0099FF,
+        ["fields"] = {
+            {
+                ["name"] = "Administrador",
+                ["value"] = player.Name,
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Comando",
+                ["value"] = "`" .. command .. "`",
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Rank",
+                ["value"] = rankName,
+                ["inline"] = true
+            }
+        },
+        ["footer"] = {
+            ["text"] = "Sistema de Logs • " .. os.date("%H:%M:%S")
+        },
+        ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    
+    QueueWebhookMessage("", embed)
+end
+
+-- Função para enviar relatório completo de jogadores online
+function SendPlayerListReport()
+    local players = game.Players:GetPlayers()
+    local onlineCount = #players
+    local adminCount = 0
+    
+    for _, player in ipairs(players) do
+        if PlayerHasRequiredRank(player) then
+            adminCount += 1
+        end
+    end
+    
+    local embed = {
+        ["title"] = "📊 Relatório de Jogadores Online",
+        ["description"] = "Status atual do servidor",
+        ["color"] = 0x7289DA,
+        ["fields"] = {
+            {
+                ["name"] = "Total Online",
+                ["value"] = tostring(onlineCount),
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Administradores",
+                ["value"] = tostring(adminCount),
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Jogadores Comuns",
+                ["value"] = tostring(onlineCount - adminCount),
+                ["inline"] = true
+            }
+        },
+        ["footer"] = {
+            ["text"] = "Sistema de Logs • " .. os.date("%H:%M:%S")
+        },
+        ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    }
+    
+    QueueWebhookMessage("", embed)
+end
+
 -- Função para obter informações do rank de um jogador
 function GetPlayerRankInfo(player)
     local success, result = pcall(function()
@@ -34,16 +247,16 @@ function GetPlayerRankInfo(player)
         if groupInfo then
             local userRole = groupInfo.Roles:GetRoleForUser(player.UserId)
             if userRole then
-                return userRole.Name, userRole.Rank
+                return userRole.Name
             end
         end
-        return "Sem Rank", 0
+        return "Sem Rank"
     end)
     
     if success then
-        return result, 0
+        return result
     else
-        return "Erro ao carregar", 0
+        return "Erro ao carregar"
     end
 end
 
@@ -62,6 +275,9 @@ function AddCommandLog(player, command)
     if #commandLogs > 50 then
         table.remove(commandLogs, 51)
     end
+    
+    -- Envia para o Discord
+    SendCommandLog(player, command)
     
     -- Atualiza a interface se estiver aberta
     if OrionLib:GetWindow("CommandLogs") then
@@ -91,12 +307,18 @@ local LogsTab = Window:MakeTab({
     PremiumOnly = false
 })
 
+-- Aba para configurações do Discord
+local DiscordTab = Window:MakeTab({
+    Name = "Configurações Discord",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+
 -- Elementos da UI para jogadores
 local playerListLabel = PlayersTab:AddSection({
     Name = "Jogadores Conectados"
 })
 
-local playerFrames = {}
 local playerSections = {}
 
 -- Elementos da UI para logs
@@ -106,6 +328,81 @@ local logsLabel = LogsTab:AddSection({
 
 local logsText = LogsTab:AddParagraph("", "")
 
+-- Elementos da UI para Discord
+DiscordTab:AddSection({
+    Name = "Configurações do Webhook"
+})
+
+local webhookInput = DiscordTab:AddTextbox({
+    Name = "URL do Webhook",
+    Default = WebhookURL,
+    TextDisappear = false,
+    Callback = function(value)
+        WebhookURL = value
+        OrionLib:MakeNotification({
+            Name = "Webhook atualizado!",
+            Content = "URL do webhook foi atualizado.",
+            Image = "rbxassetid://4483345998",
+            Time = 3
+        })
+    end
+})
+
+DiscordTab:AddToggle({
+    Name = "Usar Proxy",
+    Default = UseProxy,
+    Callback = function(value)
+        UseProxy = value
+        OrionLib:MakeNotification({
+            Name = "Configuração alterada!",
+            Content = "Uso de proxy " .. (value and "ativado" or "desativado"),
+            Image = "rbxassetid://4483345998",
+            Time = 3
+        })
+    end
+})
+
+DiscordTab:AddButton({
+    Name = "Testar Webhook",
+    Callback = function()
+        local success = SendToDiscordWebhook("✅ Teste de webhook realizado com sucesso!", {
+            ["title"] = "Teste de Conexão",
+            ["description"] = "Seu webhook está funcionando corretamente!",
+            ["color"] = 0x00FF00,
+            ["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+        })
+        
+        if success then
+            OrionLib:MakeNotification({
+                Name = "Teste bem-sucedido!",
+                Content = "Webhook enviado com sucesso para o Discord.",
+                Image = "rbxassetid://4483345998",
+                Time = 5
+            })
+        else
+            OrionLib:MakeNotification({
+                Name = "Erro no teste",
+                Content = "Falha ao enviar para o webhook. Verifique a URL.",
+                Image = "rbxassetid://4483345998",
+                Time = 5
+            })
+        end
+    end
+})
+
+DiscordTab:AddButton({
+    Name = "Enviar Relatório Atual",
+    Callback = function()
+        SendPlayerListReport()
+        OrionLib:MakeNotification({
+            Name = "Relatório enviado!",
+            Content = "Relatório de jogadores enviado para o Discord.",
+            Image = "rbxassetid://4483345998",
+            Time = 3
+        })
+    end
+})
+
 -- Função para atualizar a lista de jogadores
 function UpdatePlayersUI()
     for _, section in pairs(playerSections) do
@@ -114,7 +411,7 @@ function UpdatePlayersUI()
     playerSections = {}
     
     for _, player in ipairs(game.Players:GetPlayers()) do
-        local rankName, rankNumber = GetPlayerRankInfo(player)
+        local rankName = GetPlayerRankInfo(player)
         local isAdmin = PlayerHasRequiredRank(player)
         
         local adminStatus = isAdmin and "✅" or "❌"
@@ -125,13 +422,12 @@ function UpdatePlayersUI()
             Default = false
         })
         
-        section:AddLabel("Rank: " .. rankName .. " (#" .. tostring(rankNumber) .. ")")
+        section:AddLabel("Rank: " .. rankName)
         section:AddLabel("UserID: " .. player.UserId)
         
         playerSections[player.Name] = section
         playerData[player.Name] = {
             Rank = rankName,
-            RankNumber = rankNumber,
             IsAdmin = isAdmin
         }
     end
@@ -152,6 +448,7 @@ end
 game.Players.PlayerAdded:Connect(function(player)
     wait(1) -- Espera um pouco para carregar as informações
     UpdatePlayersUI()
+    SendPlayerJoinLog(player)
     
     -- Monitorar comandos deste jogador
     player.Chatted:Connect(function(message)
@@ -164,11 +461,16 @@ end)
 game.Players.PlayerRemoving:Connect(function(player)
     wait(1) -- Espera um pouco para atualizar
     UpdatePlayersUI()
+    SendPlayerLeaveLog(player)
+end)
+
+-- Processar fila do webhook periodicamente
+game:GetService("RunService").Heartbeat:Connect(function()
+    ProcessWebhookQueue()
 end)
 
 -- Atualizar a interface periodicamente
-local refreshLoop
-refreshLoop = game:GetService("RunService").Heartbeat:Connect(function()
+game:GetService("RunService").Heartbeat:Connect(function()
     UpdatePlayersUI()
     UpdateCommandLogsUI()
 end)
@@ -212,9 +514,12 @@ OrionLib:Init()
 -- Notificação de inicialização
 OrionLib:MakeNotification({
     Name = "Sistema carregado!",
-    Content = "Menu de administração inicializado com sucesso.",
+    Content = "Sistema de logs para Discord inicializado com sucesso.",
     Image = "rbxassetid://4483345998",
     Time = 5
 })
 
-print("Sistema de monitoramento OrionLib carregado com sucesso!")
+-- Enviar relatório inicial
+SendPlayerListReport()
+
+print("Sistema de logs para Discord carregado com sucesso!")
