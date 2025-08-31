@@ -1,19 +1,43 @@
-local OrionLib = loadstring(game:HttpGet(("https://raw.githubusercontent.com/shlexware/Orion/main/source")))()
+-- Habilitar Modo Seguro se necessário
+getgenv().SecureMode = true:cite[2]
+
+-- Carregar a biblioteca Rayfield
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))():cite[5]
 
 -- Configurações do grupo
 local GroupID = 16168861
 local AllowedRanks = {"High Rank Admin", "Low Rank Admin", "Lower Rank Admin"}
 
 -- Configurações do Webhook do Discord
-local WebhookURL = "https://discord.com/api/webhooks/1411857943791538226/xkJGodU0er5FKz3I0SuMEe3o-MW0rU4F-2jIlGSRJCKkDMsS3jcKmYRvcWS4P4EONl7t" -- Substitua pelo seu webhook
-local UseProxy = true -- Usar proxy para evitar bloqueios do Discord
-local ProxyURL = "https://webhook.lewistehminerz.dev/api" -- Proxy alternativo :cite[3]:cite[5]
+local WebhookURL = "https://discord.com/api/webhooks/1411857943791538226/xkJGodU0er5FKz3I0SuMEe3o-MW0rU4F-2jIlGSRJCKkDMsS3jcKmYRvcWS4P4EONl7t"
+local UseProxy = true
+local ProxyURL = "https://webhook.lewistehminerz.dev/api"
 
 -- Tabelas para armazenamento de dados
 local playerData = {}
 local commandLogs = {}
 local lastWebhookSend = 0
 local webhookQueue = {}
+
+-- Criar a janela principal do Rayfield
+local Window = Rayfield:CreateWindow({
+    Name = "Sistema de Administração",
+    LoadingTitle = "Carregando Sistema de Administração",
+    LoadingSubtitle = "por " .. game.Players.LocalPlayer.Name,
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "AdminSystemConfig",
+        FileName = "Configurações"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "sirius",
+        RememberJoins = true
+    },
+    KeySystem = false,
+    Theme = "Default":cite[6],
+    ToggleUIKeybind = "RightControl":cite[9]
+}):cite[10]
 
 -- Função para verificar se um jogador tem um cargo permitido
 function PlayerHasRequiredRank(player)
@@ -34,7 +58,7 @@ function PlayerHasRequiredRank(player)
     return success and result
 end
 
--- Função para enviar mensagem para o webhook do Discord :cite[6]
+-- Função para enviar mensagem para o webhook do Discord
 function SendToDiscordWebhook(message, embedData)
     local actualURL = WebhookURL
     if UseProxy then
@@ -62,7 +86,7 @@ function SendToDiscordWebhook(message, embedData)
     return true
 end
 
--- Função para adicionar mensagem à fila do webhook :cite[1]
+-- Função para adicionar mensagem à fila do webhook
 function QueueWebhookMessage(message, embedData)
     table.insert(webhookQueue, {
         Message = message,
@@ -71,7 +95,7 @@ function QueueWebhookMessage(message, embedData)
     })
 end
 
--- Processar fila do webhook respeitando rate limits :cite[1]:cite[6]
+-- Processar fila do webhook respeitando rate limits
 function ProcessWebhookQueue()
     local currentTime = os.time()
     
@@ -87,7 +111,6 @@ function ProcessWebhookQueue()
         if success then
             lastWebhookSend = currentTime
         else
-            -- Reinsere na fila se falhar
             table.insert(webhookQueue, 1, messageData)
         end
     end
@@ -271,98 +294,102 @@ function AddCommandLog(player, command)
     
     table.insert(commandLogs, 1, logEntry)
     
-    -- Limita o log aos 50 últimos comandos
     if #commandLogs > 50 then
         table.remove(commandLogs, 51)
     end
     
-    -- Envia para o Discord
     SendCommandLog(player, command)
+    UpdateCommandLogsUI()
+end
+
+-- Criar abas do Rayfield
+local PlayersTab = Window:CreateTab("Jogadores Online", 4483362458) -- Title, Image:cite[10]
+local LogsTab = Window:CreateTab("Logs de Comandos", 4483362458)
+local DiscordTab = Window:CreateTab("Configurações Discord", 4483362458)
+local AdminTab = Window:CreateTab("Comandos Admin", 4483362458)
+
+-- Elementos da UI para jogadores
+local playerSections = {}
+local playersList = {}
+
+-- Seção para lista de jogadores
+local PlayersSection = PlayersTab:CreateSection("Jogadores Conectados"):cite[10]
+
+-- Função para atualizar a lista de jogadores na UI
+function UpdatePlayersUI()
+    for _, playerFrame in pairs(playersList) do
+        playerFrame:Destroy()
+    end
+    playersList = {}
     
-    -- Atualiza a interface se estiver aberta
-    if OrionLib:GetWindow("CommandLogs") then
-        UpdateCommandLogsUI()
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        local rankName = GetPlayerRankInfo(player)
+        local isAdmin = PlayerHasRequiredRank(player)
+        
+        local playerFrame = PlayersTab:CreateParagraph({
+            Title = player.Name .. " " .. (isAdmin and "✅" or "❌"),
+            Content = "Rank: " .. rankName .. " | UserID: " .. player.UserId
+        }):cite[9]
+        
+        table.insert(playersList, playerFrame)
+        playerData[player.Name] = {
+            Rank = rankName,
+            IsAdmin = isAdmin
+        }
     end
 end
 
--- Criar a janela principal do OrionLib
-local Window = OrionLib:MakeWindow({
-    Name = "Sistema de Administração",
-    HidePremium = false,
-    SaveConfig = false,
-    ConfigFolder = "AdminConfig"
-})
-
--- Aba para listar jogadores online e seus ranks
-local PlayersTab = Window:MakeTab({
-    Name = "Jogadores Online",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- Aba para visualizar logs de comandos
-local LogsTab = Window:MakeTab({
-    Name = "Logs de Comandos",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- Aba para configurações do Discord
-local DiscordTab = Window:MakeTab({
-    Name = "Configurações Discord",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
--- Elementos da UI para jogadores
-local playerListLabel = PlayersTab:AddSection({
-    Name = "Jogadores Conectados"
-})
-
-local playerSections = {}
-
 -- Elementos da UI para logs
-local logsLabel = LogsTab:AddSection({
-    Name = "Últimos Comandos Executados"
-})
+local LogsSection = LogsTab:CreateSection("Últimos Comandos Executados")
+local logsText = LogsTab:CreateParagraph({
+    Title = "Histórico de Comandos",
+    Content = "Carregando..."
+}):cite[9]
 
-local logsText = LogsTab:AddParagraph("", "")
+-- Função para atualizar os logs de comandos na UI
+function UpdateCommandLogsUI()
+    local logContent = ""
+    
+    for i, log in ipairs(commandLogs) do
+        logContent = logContent .. string.format("[%s] %s: %s\n", log.Time, log.Player, log.Command)
+    end
+    
+    logsText:Set({Title = "Histórico de Comandos", Content = logContent})
+end
 
 -- Elementos da UI para Discord
-DiscordTab:AddSection({
-    Name = "Configurações do Webhook"
-})
+local DiscordSection = DiscordTab:CreateSection("Configurações do Webhook")
 
-local webhookInput = DiscordTab:AddTextbox({
+local webhookInput = DiscordTab:CreateInput({
     Name = "URL do Webhook",
-    Default = WebhookURL,
-    TextDisappear = false,
-    Callback = function(value)
-        WebhookURL = value
-        OrionLib:MakeNotification({
-            Name = "Webhook atualizado!",
+    PlaceholderText = WebhookURL,
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        WebhookURL = Text
+        Rayfield:Notify({
+            Title = "Webhook atualizado!",
             Content = "URL do webhook foi atualizado.",
-            Image = "rbxassetid://4483345998",
-            Time = 3
-        })
-    end
-})
+            Duration = 6.5,
+            Image = 4483362458,
+        }):cite[9]
+    end,
+}):cite[9]
 
-DiscordTab:AddToggle({
+local proxyToggle = DiscordTab:CreateToggle({
     Name = "Usar Proxy",
-    Default = UseProxy,
-    Callback = function(value)
-        UseProxy = value
-        OrionLib:MakeNotification({
-            Name = "Configuração alterada!",
-            Content = "Uso de proxy " .. (value and "ativado" or "desativado"),
-            Image = "rbxassetid://4483345998",
-            Time = 3
+    CurrentValue = UseProxy,
+    Callback = function(Value)
+        UseProxy = Value
+        Rayfield:Notify({
+            Title = "Configuração alterada!",
+            Content = "Uso de proxy " .. (Value and "ativado" or "desativado"),
+            Duration = 6.5,
+            Image = 4483362458,
         })
-    end
-})
+    end,
+}):cite[9]
 
-DiscordTab:AddButton({
+DiscordTab:CreateButton({
     Name = "Testar Webhook",
     Callback = function()
         local success = SendToDiscordWebhook("✅ Teste de webhook realizado com sucesso!", {
@@ -373,84 +400,107 @@ DiscordTab:AddButton({
         })
         
         if success then
-            OrionLib:MakeNotification({
-                Name = "Teste bem-sucedido!",
+            Rayfield:Notify({
+                Title = "Teste bem-sucedido!",
                 Content = "Webhook enviado com sucesso para o Discord.",
-                Image = "rbxassetid://4483345998",
-                Time = 5
+                Duration = 6.5,
+                Image = 4483362458,
             })
         else
-            OrionLib:MakeNotification({
-                Name = "Erro no teste",
+            Rayfield:Notify({
+                Title = "Erro no teste",
                 Content = "Falha ao enviar para o webhook. Verifique a URL.",
-                Image = "rbxassetid://4483345998",
-                Time = 5
+                Duration = 6.5,
+                Image = 4483362458,
             })
         end
-    end
-})
+    end,
+}):cite[9]
 
-DiscordTab:AddButton({
+DiscordTab:CreateButton({
     Name = "Enviar Relatório Atual",
     Callback = function()
         SendPlayerListReport()
-        OrionLib:MakeNotification({
-            Name = "Relatório enviado!",
+        Rayfield:Notify({
+            Title = "Relatório enviado!",
             Content = "Relatório de jogadores enviado para o Discord.",
-            Image = "rbxassetid://4483345998",
-            Time = 3
+            Duration = 6.5,
+            Image = 4483362458,
         })
-    end
-})
+    end,
+}):cite[9]
 
--- Função para atualizar a lista de jogadores
-function UpdatePlayersUI()
-    for _, section in pairs(playerSections) do
-        section:Remove()
-    end
-    playerSections = {}
-    
-    for _, player in ipairs(game.Players:GetPlayers()) do
-        local rankName = GetPlayerRankInfo(player)
-        local isAdmin = PlayerHasRequiredRank(player)
-        
-        local adminStatus = isAdmin and "✅" or "❌"
-        local playerColor = isAdmin and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
-        
-        local section = PlayersTab:AddSection({
-            Name = player.Name .. " " .. adminStatus,
-            Default = false
+-- Elementos da UI para Comandos Admin
+local AdminSection = AdminTab:CreateSection("Comandos de Administração")
+
+local loopkillInput = AdminTab:CreateInput({
+    Name = "Loopkill Player",
+    PlaceholderText = "Nome do jogador",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(playerName)
+        if PlayerHasRequiredRank(game.Players.LocalPlayer) then
+            local targetPlayer = game.Players:FindFirstChild(playerName)
+            if targetPlayer then
+                -- Aqui você adicionaria a função de loopkill
+                Rayfield:Notify({
+                    Title = "Loopkill ativado!",
+                    Content = "Loopkill ativado para " .. targetPlayer.Name,
+                    Duration = 6.5,
+                    Image = 4483362458,
+                })
+                AddCommandLog(game.Players.LocalPlayer, ":loopkill " .. playerName)
+            else
+                Rayfield:Notify({
+                    Title = "Jogador não encontrado",
+                    Content = "O jogador " .. playerName .. " não foi encontrado.",
+                    Duration = 6.5,
+                    Image = 4483362458,
+                })
+            end
+        else
+            Rayfield:Notify({
+                Title = "Sem permissão",
+                Content = "Você não tem permissão para usar este comando.",
+                Duration = 6.5,
+                Image = 4483362458,
+            })
+        end
+    end,
+}):cite[9]
+
+AdminTab:CreateButton({
+    Name = "Atualizar Lista de Jogadores",
+    Callback = function()
+        UpdatePlayersUI()
+        Rayfield:Notify({
+            Title = "Lista atualizada!",
+            Content = "Lista de jogadores foi atualizada.",
+            Duration = 6.5,
+            Image = 4483362458,
         })
-        
-        section:AddLabel("Rank: " .. rankName)
-        section:AddLabel("UserID: " .. player.UserId)
-        
-        playerSections[player.Name] = section
-        playerData[player.Name] = {
-            Rank = rankName,
-            IsAdmin = isAdmin
-        }
-    end
-end
+    end,
+}):cite[9]
 
--- Função para atualizar os logs de comandos
-function UpdateCommandLogsUI()
-    local logText = ""
-    
-    for i, log in ipairs(commandLogs) do
-        logText = logText .. string.format("[%s] %s: %s\n", log.Time, log.Player, log.Command)
-    end
-    
-    logsText:Set(logText)
-end
+AdminTab:CreateButton({
+    Name = "Limpar Logs",
+    Callback = function()
+        commandLogs = {}
+        UpdateCommandLogsUI()
+        Rayfield:Notify({
+            Title = "Logs limpos!",
+            Content = "Todos os logs de comandos foram removidos.",
+            Duration = 6.5,
+            Image = 4483362458,
+        })
+    end,
+}):cite[9]
 
 -- Monitorar quando jogadores entram e saem
 game.Players.PlayerAdded:Connect(function(player)
-    wait(1) -- Espera um pouco para carregar as informações
+    task.wait(1)
     UpdatePlayersUI()
     SendPlayerJoinLog(player)
     
-    -- Monitorar comandos deste jogador
     player.Chatted:Connect(function(message)
         if string.sub(message, 1, 1) == ":" then
             AddCommandLog(player, message)
@@ -459,7 +509,7 @@ game.Players.PlayerAdded:Connect(function(player)
 end)
 
 game.Players.PlayerRemoving:Connect(function(player)
-    wait(1) -- Espera um pouco para atualizar
+    task.wait(1)
     UpdatePlayersUI()
     SendPlayerLeaveLog(player)
 end)
@@ -467,10 +517,6 @@ end)
 -- Processar fila do webhook periodicamente
 game:GetService("RunService").Heartbeat:Connect(function()
     ProcessWebhookQueue()
-end)
-
--- Atualizar a interface periodicamente
-game:GetService("RunService").Heartbeat:Connect(function()
     UpdatePlayersUI()
     UpdateCommandLogsUI()
 end)
@@ -479,47 +525,18 @@ end)
 UpdatePlayersUI()
 UpdateCommandLogsUI()
 
--- Adicionar botão de atualização manual
-PlayersTab:AddButton({
-    Name = "Atualizar Lista",
-    Callback = function()
-        UpdatePlayersUI()
-        OrionLib:MakeNotification({
-            Name = "Lista atualizada!",
-            Content = "Lista de jogadores foi atualizada.",
-            Image = "rbxassetid://4483345998",
-            Time = 3
-        })
-    end
-})
-
--- Adicionar botão para limpar logs
-LogsTab:AddButton({
-    Name = "Limpar Logs",
-    Callback = function()
-        commandLogs = {}
-        UpdateCommandLogsUI()
-        OrionLib:MakeNotification({
-            Name = "Logs limpos!",
-            Content = "Todos os logs de comandos foram removidos.",
-            Image = "rbxassetid://4483345998",
-            Time = 3
-        })
-    end
-})
-
--- Inicializar a OrionLib
-OrionLib:Init()
-
 -- Notificação de inicialização
-OrionLib:MakeNotification({
-    Name = "Sistema carregado!",
-    Content = "Sistema de logs para Discord inicializado com sucesso.",
-    Image = "rbxassetid://4483345998",
-    Time = 5
-})
+Rayfield:Notify({
+    Title = "Sistema carregado!",
+    Content = "Sistema de administração com Rayfield inicializado com sucesso.",
+    Duration = 6.5,
+    Image = 4483362458,
+}):cite[9]
 
 -- Enviar relatório inicial
 SendPlayerListReport()
 
-print("Sistema de logs para Discord carregado com sucesso!")
+-- Carregar configuração salva
+Rayfield:LoadConfiguration():cite[2]
+
+print("Sistema de administração com Rayfield carregado com sucesso!")
