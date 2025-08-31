@@ -1,0 +1,164 @@
+local GroupID = 16168861
+-- Defina aqui os NOMES dos cargos que terão permissão
+local AllowedRanks = {"High Rank Admin", "Low Rank Admin", "Lower Rank Admin"}
+
+local LoopKillPlayers = {}
+local LoopKillConnections = {}
+
+-- Função para verificar se um jogador tem um cargo permitido pelo NOME
+function PlayerHasRequiredRank(player)
+    local success, result = pcall(function()
+        local groupInfo = game:GetService("GroupService"):GetGroupInfoAsync(GroupID)
+        if groupInfo then
+            local userRole = groupInfo.Roles:GetRoleForUser(player.UserId)
+            if userRole then
+                for _, allowedRank in ipairs(AllowedRanks) do
+                    if userRole.Name == allowedRank then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end)
+    return success and result
+end
+
+-- Função para enviar jogador para o void (adaptada do seu exemplo)
+function SendToVoid(targetPlayer)
+    if not targetPlayer.Character then return end
+    
+    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return end
+    
+    -- Teleporta o jogador para bem abaixo do mapa (void)
+    targetHRP.CFrame = CFrame.new(targetHRP.Position + Vector3.new(0, -500, 0))
+    
+    -- Força a morte do personagem
+    local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+    if humanoid then
+        humanoid.Health = 0
+    end
+end
+
+-- Função para iniciar o loopkill em um jogador
+function StartLoopKill(targetPlayer)
+    if LoopKillPlayers[targetPlayer.Name] then
+        return  -- Já está ativo
+    end
+
+    -- Executa imediatamente
+    SendToVoid(targetPlayer)
+
+    -- Conecta o evento CharacterAdded para executar sempre que o jogador renascer
+    local connection = targetPlayer.CharacterAdded:Connect(function(character)
+        character:WaitForChild("HumanoidRootPart")
+        wait(1)  -- Espera um pouco para o personagem spawnar completamente
+        SendToVoid(targetPlayer)
+    end)
+
+    LoopKillPlayers[targetPlayer.Name] = true
+    LoopKillConnections[targetPlayer.Name] = connection
+    
+    -- Também executa periodicamente (a cada 3 segundos) para garantir
+    local periodicConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        if LoopKillPlayers[targetPlayer.Name] and targetPlayer.Character then
+            SendToVoid(targetPlayer)
+        else
+            periodicConnection:Disconnect()
+        end
+    end)
+end
+
+-- Função para parar o loopkill em um jogador
+function StopLoopKill(targetPlayer)
+    local connection = LoopKillConnections[targetPlayer.Name]
+    if connection then
+        connection:Disconnect()
+        LoopKillConnections[targetPlayer.Name] = nil
+    end
+    LoopKillPlayers[targetPlayer.Name] = nil
+end
+
+-- Função para iniciar o loopkill em todos os jogadores
+function StartLoopKillAll()
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if not PlayerHasRequiredRank(player) then  -- Não aplica a admins
+            StartLoopKill(player)
+        end
+    end
+end
+
+-- Função para parar o loopkill em todos os jogadores
+function StopLoopKillAll()
+    for playerName, _ in pairs(LoopKillPlayers) do
+        local player = game.Players:FindFirstChild(playerName)
+        if player then
+            StopLoopKill(player)
+        end
+    end
+end
+
+-- Função para parar o loopkill de um jogador específico
+function StopLoopKillPlayer(targetName)
+    local targetPlayer = game.Players:FindFirstChild(targetName)
+    if targetPlayer then
+        StopLoopKill(targetPlayer)
+        return true
+    end
+    return false
+end
+
+-- Detecta quando um jogador envia uma mensagem no chat
+game.Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(message)
+        if string.sub(message, 1, 9):lower() == ":loopkill" then
+            if PlayerHasRequiredRank(player) then
+                local targetName = string.sub(message, 11)  -- Remove ":loopkill " do início
+                
+                if targetName:lower() == "all" then
+                    StartLoopKillAll()
+                    player:Chat("Loopkill ativado para todos os jogadores.")
+                else
+                    local targetPlayer = game.Players:FindFirstChild(targetName)
+                    if targetPlayer then
+                        StartLoopKill(targetPlayer)
+                        player:Chat("Loopkill ativado para " .. targetPlayer.Name)
+                    else
+                        player:Chat("Jogador não encontrado: " .. targetName)
+                    end
+                end
+            else
+                player:Chat("Você não tem permissão para usar este comando.")
+            end
+        elseif string.sub(message, 1, 11):lower() == ":unloopkill" then
+            if PlayerHasRequiredRank(player) then
+                local targetName = string.sub(message, 13)  -- Remove ":unloopkill " do início
+                
+                if targetName:lower() == "all" then
+                    StopLoopKillAll()
+                    player:Chat("Loopkill desativado para todos.")
+                else
+                    if StopLoopKillPlayer(targetName) then
+                        player:Chat("Loopkill desativado para " .. targetName)
+                    else
+                        player:Chat("Jogador não encontrado ou não estava em loopkill: " .. targetName)
+                    end
+                end
+            else
+                player:Chat("Você não tem permissão para usar este comando.")
+            end
+        end
+    end)
+end)
+
+-- Limpa as conexões quando um jogador deixa o jogo
+game.Players.PlayerRemoving:Connect(function(player)
+    if LoopKillPlayers[player.Name] then
+        StopLoopKill(player)
+    end
+end)
+
+-- Mensagem de inicialização
+print("Sistema de LoopKail carregado para Fling Things and People")
+print("Comandos disponíveis: :loopkill [nome/all], :unloopkill [nome/all]")
