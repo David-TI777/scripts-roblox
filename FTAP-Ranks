@@ -6,7 +6,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))():cite
 
 -- id do grupo
 local GroupID = 16168861
-local AllowedRanks = {"High Rank Admin", "Low Rank Admin", "Lower Rank Admin"}
+local AllowedRanks = {"High Rank Admin", "Low Rank Admin", "Lower Admin Rank"}
 
 -- Configuracao do discord
 local WebhookURL = "https://discord.com/api/webhooks/1411857943791538226/xkJGodU0er5FKz3I0SuMEe3o-MW0rU4F-2jIlGSRJCKkDMsS3jcKmYRvcWS4P4EONl7t"
