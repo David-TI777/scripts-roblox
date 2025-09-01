@@ -1,25 +1,25 @@
--- Habilitar Modo Seguro se necessário
-getgenv().SecureMode = true:cite[2]
+-- modo seguro
+getgenv().SecureMode = false:cite[2]
 
 -- Carregar a biblioteca Rayfield
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))():cite[5]
 
--- Configurações do grupo
+-- id do grupo
 local GroupID = 16168861
 local AllowedRanks = {"High Rank Admin", "Low Rank Admin", "Lower Rank Admin"}
 
--- Configurações do Webhook do Discord
+-- Configuracao do discord
 local WebhookURL = "https://discord.com/api/webhooks/1411857943791538226/xkJGodU0er5FKz3I0SuMEe3o-MW0rU4F-2jIlGSRJCKkDMsS3jcKmYRvcWS4P4EONl7t"
 local UseProxy = true
 local ProxyURL = "https://webhook.lewistehminerz.dev/api"
 
--- Tabelas para armazenamento de dados
+-- armazenamento de dado 
 local playerData = {}
 local commandLogs = {}
 local lastWebhookSend = 0
 local webhookQueue = {}
 
--- Criar a janela principal do Rayfield
+-- janela rayfield
 local Window = Rayfield:CreateWindow({
     Name = "Sistema de Administração",
     LoadingTitle = "Carregando Sistema de Administração",
@@ -39,7 +39,7 @@ local Window = Rayfield:CreateWindow({
     ToggleUIKeybind = "RightControl":cite[9]
 }):cite[10]
 
--- Função para verificar se um jogador tem um cargo permitido
+-- verificar permissão
 function PlayerHasRequiredRank(player)
     local success, result = pcall(function()
         local groupInfo = game:GetService("GroupService"):GetGroupInfoAsync(GroupID)
@@ -58,7 +58,7 @@ function PlayerHasRequiredRank(player)
     return success and result
 end
 
--- Função para enviar mensagem para o webhook do Discord
+-- logs discord
 function SendToDiscordWebhook(message, embedData)
     local actualURL = WebhookURL
     if UseProxy then
@@ -86,7 +86,7 @@ function SendToDiscordWebhook(message, embedData)
     return true
 end
 
--- Função para adicionar mensagem à fila do webhook
+-- add mensagem
 function QueueWebhookMessage(message, embedData)
     table.insert(webhookQueue, {
         Message = message,
@@ -116,7 +116,7 @@ function ProcessWebhookQueue()
     end
 end
 
--- Função para enviar log de jogador online
+-- enviar log de ranks
 function SendPlayerJoinLog(player)
     local rankName = GetPlayerRankInfo(player)
     local isAdmin = PlayerHasRequiredRank(player)
@@ -151,7 +151,7 @@ function SendPlayerJoinLog(player)
     QueueWebhookMessage("", embed)
 end
 
--- Função para enviar log de jogador offline
+-- enviar log de saida
 function SendPlayerLeaveLog(player)
     local rankName = GetPlayerRankInfo(player)
     local isAdmin = PlayerHasRequiredRank(player)
@@ -186,7 +186,7 @@ function SendPlayerLeaveLog(player)
     QueueWebhookMessage("", embed)
 end
 
--- Função para enviar log de comando executado
+-- enviar comando executado
 function SendCommandLog(player, command)
     local rankName = GetPlayerRankInfo(player)
     local isAdmin = PlayerHasRequiredRank(player)
@@ -221,7 +221,7 @@ function SendCommandLog(player, command)
     QueueWebhookMessage("", embed)
 end
 
--- Função para enviar relatório completo de jogadores online
+-- relatorio de ranks online
 function SendPlayerListReport()
     local players = game.Players:GetPlayers()
     local onlineCount = #players
@@ -283,7 +283,7 @@ function GetPlayerRankInfo(player)
     end
 end
 
--- Função para adicionar log de comando
+-- add log
 function AddCommandLog(player, command)
     local timestamp = os.date("%H:%M:%S")
     local logEntry = {
@@ -346,7 +346,7 @@ local logsText = LogsTab:CreateParagraph({
     Content = "Carregando..."
 }):cite[9]
 
--- Função para atualizar os logs de comandos na UI
+-- logs2
 function UpdateCommandLogsUI()
     local logContent = ""
     
@@ -357,7 +357,7 @@ function UpdateCommandLogsUI()
     logsText:Set({Title = "Histórico de Comandos", Content = logContent})
 end
 
--- Elementos da UI para Discord
+-- Elemento da ui discord
 local DiscordSection = DiscordTab:CreateSection("Configurações do Webhook")
 
 local webhookInput = DiscordTab:CreateInput({
@@ -430,7 +430,7 @@ DiscordTab:CreateButton({
     end,
 }):cite[9]
 
--- Elementos da UI para Comandos Admin
+-- elemento comandos de ranks
 local AdminSection = AdminTab:CreateSection("Comandos de Administração")
 
 local loopkillInput = AdminTab:CreateInput({
@@ -441,7 +441,7 @@ local loopkillInput = AdminTab:CreateInput({
         if PlayerHasRequiredRank(game.Players.LocalPlayer) then
             local targetPlayer = game.Players:FindFirstChild(playerName)
             if targetPlayer then
-                -- Aqui você adicionaria a função de loopkill
+                -- função
                 Rayfield:Notify({
                     Title = "Loopkill ativado!",
                     Content = "Loopkill ativado para " .. targetPlayer.Name,
@@ -495,7 +495,7 @@ AdminTab:CreateButton({
     end,
 }):cite[9]
 
--- Monitorar quando jogadores entram e saem
+-- monitorar quando jogadores entram e saem
 game.Players.PlayerAdded:Connect(function(player)
     task.wait(1)
     UpdatePlayersUI()
